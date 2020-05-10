@@ -3,7 +3,7 @@
 
 ### **https://rpubs.com/Anjali_Cincinnati/612071**
 
-The project forecasts the median housing prices of listings in Zillow ( within New York City ). A SARIMA model has been used for this purpose and the performance of the model if further compared with auto arima models 
+The project forecasts the median housing prices of listings in Zillow ( within New York City ). A SARIMA model has been used for this purpose and the performance of the model is further compared with auto arima models. 
 
 ## **1. Introduction**
 
