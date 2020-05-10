@@ -1,0 +1,399 @@
+---
+title: "Forecasting housing prices of Zillow listings"
+author: "Anjali Shalimar"
+date: "5/9/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Forecasting Zillow property prices
+
+```{r pressure, echo=FALSE,fig.width= 200 , fig.height=15,fig.align="center",out.width = '75%'}
+# company logo 
+
+knitr::include_graphics("zillow.png")
+```
+
+## **1. Introduction**
+
+### 1.1  Zillow's Business Model
+
+
+Zillow Group, Inc., or simply Zillow, is a leading real estate and rental marketplace founded in 2006 and headquartered in Seattle. Zillow is involved in buying, selling, renting, financing, remodeling of properties and also has a living database of more than 110 million U.S. homes, including
+
+* Homes for sale
+
+* Homes for rent &
+
+* Homes not currently on the market
+
+Zillow also lists the prices of the properties that are not on the market. Zillow estimates or Zestimates as they are popularly known Zillow’s estimate of a home's market value. The Zestimate incorporates public and user-submitted data, taking into account home facts, location and market conditions.
+
+
+
+### 1.2 What is the need of the hour?
+
+
+The Zestimate is marketed as a tool designed to take the mystery out of real estate for consumers who would otherwise have to rely on brokers and guesswork. However, Zestimates often give a single time point value which might not be an accurate way to base the decision of purchase on. 
+
+To make an informed purchase decision, investors or buyers need to be aware of the past trends and how the trends might affect the market henceforth.The purpose of this project is to address this want of the investors by leveraging the information at hand to evaluate the property prices up to the current time point and also understand the anticipated market trends for a reasonable period in the future
+
+
+
+### 1.3 How do we go about it?
+
+Currently the database at our disposal has a zip code level data for properties in the US. The price points are updated only till 2017. 
+
+Our objective here is to create a scalable product to forecast the prices of these properties up till 2020 (with a scope of additional forecasts for the future). For the purpose of this project, we are concentrating specifically on the 2-bedroom properties in New York city (NYC). 
+
+The ensuing report will showcase the results of 3 randomly selected zip codes in NYC (10013, 10011, 10003) and a step by step understanding of all the processes from cleaning and manipulation of the data to forecasting the data and performing adequacy checks. An R shiny app is also created to give a better visual and functional experience to the investors browsing the app.
+
+***
+
+
+
+## **2. Original Data Source**
+
+
+The dataset has been sourced from [data.world](https://data.world/zillow-data). 
+
+The dataset has over 8900 zip codes of properties across the US. In this project, we are concentrating only on the 2 bhk properties listed under New York City. This sets the project scope to 25 zip codes.
+
+
+```{r,message=FALSE,warning=FALSE}
+
+#loading the required libraries
+
+library(fpp)
+library('tidyr')
+library('dplyr')
+library(astsa)
+library(data.table)
+library(DT)
+library(kableExtra)
+library(knitr)
+library(stringr)
+library(formattable)
+library(tidyverse)
+library(tidyselect)
+
+
+
+# Load data ---------------------------------------------------------------
+
+zillow.data <- read.csv("Zip_Zhvi_2bedroom.csv", header=T)
+```
+
+
+***
+
+
+## **3 Data Cleaning and transformation**
+
+### 3.1 Data Cleaning
+
+* Upon careful consideration of the data, we have decided to consider data points only from 2006 onwards.
+
+* Checking the NA values of the selected 25 zip codes has led to the removal of the zip code for Downtown Brooklyn (11201).
+
+```{r,message=FALSE,warning=FALSE}
+
+# Subsetting data  --------------------------------------------------------
+
+zillow.data <- subset(zillow.data, City=='New York')
+zillow.data <- subset(zillow.data, RegionID!=62012)  #removed since it has numerous NA's
+
+
+# wide --> long -----------------------------------------------------------
+
+zillow.long<-gather(zillow.data,Year,Price,-c("RegionID","RegionName","City","State","Metro","CountyName","SizeRank"),factor_key = TRUE)
+
+
+# wrangling date column ---------------------------------------------------
+
+zillow.long$Year<-substring(zillow.long$Year, 2)
+zillow.long$month<- substr(zillow.long$Year, 6, nchar(zillow.long$Year))
+zillow.long$Year<-substr(zillow.long$Year, 1, 4)
+
+zillow.long$day<-1
+zillow.long$date <- as.Date(with(zillow.long, paste(Year, month, day,sep="-")), "%Y-%m-%d")
+
+drops <- c("Year","month","day")
+zillow.long<-zillow.long[ , !(names(zillow.long) %in% drops)]
+
+
+zillow.long$RegionID<-as.factor(zillow.long$RegionID)
+zillow.long$RegionName<-as.factor(zillow.long$RegionName)
+zillow.df<-zillow.long
+
+
+# Sorting data ------------------------------------------------------------
+
+zillow.df<-zillow.df[order(zillow.df$SizeRank),]
+
+
+# Subsetting to consider data from 2006 ---------------------------------------
+
+zillow.df<-zillow.df %>%
+  group_by(RegionID) %>% 
+  filter(date >= as.Date("2006-01-01"))
+
+# Retaining only the required cols ----------------------------------------
+
+zillow_subset<-zillow.df[,c('RegionName','Price','date')]
+zillow_subset<-spread(zillow_subset,RegionName,Price)
+
+```
+
+
+### 3.2 Data Transformation
+
+The data is then converted to time series data and further analysis is done using the “fpp”, “astsa” and “timeseries”.
+
+The data then has to be converted to a time series data after selecting the relevant columns with each column representing the time series data of a particular zip code .
+
+Given below is a snapshot of the same
+
+
+```{r,message=FALSE,warning=FALSE}
+# Printing the table
+
+# Converting to timeseries ------------------------------------------------
+
+zillow.forecast<-ts(zillow_subset,frequency = 12,start = 2006)
+
+zillow.forecast<-zillow.forecast[,-1]
+
+n<-dim(zillow.forecast)[2]
+zillow.all<-zillow.forecast #can add all columns
+
+
+kable(head(zillow.forecast,3), format = "html") %>%
+        kable_styling(bootstrap_options = "striped") %>%
+        column_spec(2, width = "12em")
+```
+
+***
+
+
+## **4 Exploratory Data Analysis **
+
+This section investigates the key insights and trends in three sample zip codes (10013, 10011, 10003), which would further buttress the methodology used to fit an adequate time series model for all zip codes in the dataset.
+
+
+### 4.1 Identifying Homogeneous Non-Stationarity in the data
+
+The below time series plot indicates that the mean and the variance of the time series data ( of median property cost) varies by zip code. 
+
+```{r,message=FALSE,warning=FALSE}
+# Taking only 3 random zipcodes -------------------------------------------
+
+zillow.3<-zillow.forecast[,c(1,2,3)]
+
+plot(zillow.3)
+```
+
+
+The ACF , PACF plots are investigated and an ADF test is conducted to confirm this hypothesis. The plot in the next section are the ACF and PACF plots for the three sample zip codes which further indicates the non-stationarity of the times series data. 
+
+
+#### **Augmented Dickey-Fuller Test** 
+
+**Null Hypothesis** : The time series is non-stationary    
+
+**Alternate Hypothesis**: The time series is stationary
+
+
+```{r,message=FALSE,warning=FALSE}
+# Taking only 3 random zipcodes -------------------------------------------
+
+
+p_value <- c(adf.test(zillow.3[,1])$p.value,adf.test(zillow.3[,2])$p.value,adf.test(zillow.3[,3])$p.value)
+lag_order <- c(adf.test(zillow.3[,1])$parameter,adf.test(zillow.3[,2])$parameter,adf.test(zillow.3[,3])$parameter)
+dickey_fuller <- c(adf.test(zillow.3[,1])$statistic,adf.test(zillow.3[,2])$statistic,adf.test(zillow.3[,3])$statistic)
+zip_code <- c("10003","10011","10013")
+
+#tab <- cbind(p,l,t)
+
+dickey_fuller <- data.frame(zip_code,dickey_fuller,lag_order ,p_value)
+
+kable(dickey_fuller, format = "html") %>%
+        kable_styling(bootstrap_options = "striped") %>%
+        column_spec(2, width = "12em")
+
+
+
+
+
+```
+
+At 95% confidence, we fail to reject the null hypothesis for all three zip codes. Hence it is confirmed that the time series data is not stationary in nature. 
+
+
+### 4.2 Identifying Seasonality in the Time Series Data
+
+ACF  and PACF Plots
+
+The ACF and PACF plots of the zip codes show a seasonal pattern across time lags. This indicates that an ARIMA model would not successfully capture the seasonal component in the time series. Hence a seasonal ARIMA (SARIMA) model would be imperative to accurately forecast the median housing prices.
+ 
+**A key insight is that while the seasonal patterns across all three zip codes occur at every 12 lags, the pattern in itself is different for each zip code. This indicates that a single seasonal ARIMA (SARIMA) model would not be an adequate fit for all zip codes in the dataset.**
+
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+# Plotting ACF -------------------------------------------
+
+par(mfrow = c(2,2))
+
+acf(zillow.3[,1], main = "ACF of zip code: 10003")
+acf(zillow.3[,2], main = "ACF of zip code: 10011")
+acf(zillow.3[,3], main = "ACF of zip code: 10013")
+
+
+
+```
+
+
+
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+# Plotting PACF -------------------------------------------
+par(mfrow = c(2,2))
+pacf(zillow.3[,1], main = "PACF of zip code: 10003")
+pacf(zillow.3[,2], main = "PACF of zip code: 10011")
+pacf(zillow.3[,3], main = "PACF of zip code: 10013")
+
+```
+
+
+***
+
+## **5. Modeling the Seasonal Time Series Data**
+
+The following section looks into identifying the best fit SARIMA model to predict the median housing price of a zip code. The fitted model is then tested for adequacy and the methodology is scaled to all zip codes in the data set. 
+
+### 5.1 Identifying SARIMA Model Hyperparameters Using Grid Search Algorithm
+
+The exploratory data analysis section reveals that each zip code follows a seasonal pattern every 12 periods. Hence S (number of time steps for a single seasonal period) is kept at 12. A grid search algorithm is created to identify the 
+
+* most optimal difference order (d), 
+
+* autoregressive order(p), 
+
+* moving average order(q) of the data. 
+
+Further the grid search algorithm also identifies the 
+
+* most optimal seasonal autoregressive order (P) , 
+
+* seasonal moving average order (Q) and
+
+* seasonal difference order (D). The model hyperparameters that produce the lowest AIC value are chosen as the best fit model for a particular zip code. The model selected through grid search algorithm is then benchmarked with the auto arima model based on the respective AIC values.
+
+ We observe that grid search algorithm produces a better fit model when compared to the auto arima model (for all three zip codes).
+ 
+```{r, echo=FALSE,fig.width= 200 , fig.height=20,fig.align="center",out.width = '100%'}
+
+knitr::include_graphics("modl_comparison.jpg")
+```
+
+
+### 5.2 Residual Analysis and Model Adequacy Test
+
+The best fit model identified through grid search algorithm is then tested for adequacy using residual analysis and Ljung - Box test. The LJung-Box  test results of the three sample zip codes have been shown below.
+
+#### **Zip code 10003**
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+
+
+ts_10003 <-zillow.all[,1]
+fit10003 <- Arima(ts_10003, order=c(2,2,3), seasonal=c(1,0,0),include.constant = FALSE,lambda=0)
+
+checkresiduals(fit10003)  #diagnostics
+
+```
+
+
+#### **Zip code 10011**
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+
+
+ts_10011 <-zillow.all[,2]
+fit10011 <- Arima(ts_10011, order=c(2,2,3), seasonal=c(1,0,0),include.constant = FALSE,lambda=0)
+
+checkresiduals(fit10011)  #diagnostics
+
+```
+
+
+#### **Zip code 10013**
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+
+
+ts_10013 <-zillow.all[,3]
+fit10013 <- Arima(ts_10013, order=c(2,2,3), seasonal=c(1,0,0),include.constant = FALSE,lambda=0)
+
+checkresiduals(fit10013)  #diagnostics
+
+```
+
+
+
+The Ljung-Box test confirms the adequacy of the three SARIMA models selected for the sample zip codes. The adequacy testing process is then scaled for all zip codes in the dataset ( each with its own best fit SARIMA model ).
+
+
+### 5.3 Forecasting zip code wise median property price using the selected SARIMA model
+
+As we can observe, the forecasted  median property price trends differ significantly for each zip code. The median property price for each zip code is generated for April 2020.
+
+#### **Forecast for 10003**
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+
+fit10003 %>% forecast(h=36) %>% autoplot()
+```
+
+
+#### **Forecast for 10011**
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+
+fit10011 %>% forecast(h=36) %>% autoplot()
+```
+
+
+#### **Forecast for 10013**
+```{r,fig.align = 'center',message=FALSE,warning=FALSE}
+
+fit10013 %>% forecast(h=36) %>% autoplot()
+```
+
+***
+
+
+## **6. Summary of the best fit SARIMA model for all zip codes in the dataset**
+
+The below table summarizes the best fit SARIMA model generated using grid search and further compares it with the model generated using auto arima in R. **The model highlighted in green gives the lowest AIC value.**
+
+```{r, echo=FALSE,fig.width= 200 , fig.height=20,fig.align="center",out.width = '100%'}
+
+knitr::include_graphics("Best_model_summary.png")
+```
+
+***
+
+## **7. The app**
+
+An R Shiny app was developed that helps the client to self-serve the delivery of key insights. Please find the link to the app [here](https://ethanhodys.shinyapps.io/flex/)
+
+
+***
+
+## **8.	Summary of the Analysis**
+
+
+The analysis forecasts the median housing price for zip codes in New York City. The initial exploratory data analysis rendered insights into the non-stationary and seasonal nature of the time series data. It was also derived that a single seasonal ARIMA (SARIMA) model would not be an adequate fit for all zip codes. Hence the grid search algorithm was used to find the optimal SARIMA hyperparameters for each zip code. The model was then fit and tested for adequacy. The rendered model performed at par or above in comparison to the auto arima models. Additionally, the model was used to forecast the median housing price by zip code for April (2020). Finally, an R Shiny app was developed that helps clients self-serve the delivery of key insights. The app has the capability to accommodate different hyperparameter values to generate price forecasts. 
+
+**References**
+
+[Lectures](https://xiaoruizhu.github.io/Forecasting-and-Time-Series-Methods/)
+
+***
