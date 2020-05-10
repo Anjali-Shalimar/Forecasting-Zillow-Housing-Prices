@@ -59,7 +59,7 @@ An R Shiny app was developed that helps the client to self-serve the delivery of
 
 ***
 
-## **8.	Summary of the Analysis**
+## **4.	Summary of the Analysis**
 
 
 The analysis forecasts the median housing price for zip codes in New York City. The initial exploratory data analysis rendered insights into the non-stationary and seasonal nature of the time series data. It was also derived that a single seasonal ARIMA (SARIMA) model would not be an adequate fit for all zip codes. Hence the grid search algorithm was used to find the optimal SARIMA hyperparameters for each zip code. The model was then fit and tested for adequacy. The rendered model performed at par or above in comparison to the auto arima models. Additionally, the model was used to forecast the median housing price by zip code for April (2020). Finally, an R Shiny app was developed that helps clients self-serve the delivery of key insights. The app has the capability to accommodate different hyperparameter values to generate price forecasts. 
